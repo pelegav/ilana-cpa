@@ -1,0 +1,12 @@
+package com.ilanacpa.backend.audit;
+
+public enum AuditAction {
+    LOGIN_SUCCESS,
+    LOGIN_FAILURE,
+    REFRESH_REUSE_DETECTED,
+    USER_CREATED,
+    USER_ROLE_OR_STATUS_CHANGED,
+    DOCUMENT_UPLOADED,
+    DOCUMENT_STATUS_CHANGED,
+    DOCUMENT_DOWNLOADED
+}

@@ -1,7 +1,8 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { cookies } from "next/headers";
+import { publicApiFetch, setAuthCookies, clearAuthCookies, REFRESH_TOKEN_COOKIE } from "@/lib/api/client";
 
 export type LoginState = { error?: string } | undefined;
 
@@ -10,28 +11,43 @@ export async function login(_state: LoginState, formData: FormData): Promise<Log
   const password = String(formData.get("password") ?? "");
   const next = String(formData.get("next") ?? "");
 
-  const supabase = await createClient();
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  const res = await publicApiFetch("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
 
-  if (error || !data.user) {
+  if (!res.ok) {
+    if (res.status === 429) {
+      return { error: "Too many attempts. Please try again in a few minutes." };
+    }
     return { error: "Invalid email or password." };
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", data.user.id)
-    .single();
+  const data = await res.json();
+  await setAuthCookies(data.accessToken, data.refreshToken);
 
   if (next && next.startsWith("/")) {
     redirect(next);
   }
 
-  redirect(profile?.role === "admin" ? "/admin" : "/portal");
+  redirect(data.user.role === "ADMIN" || data.user.role === "ACCOUNTANT" ? "/admin" : "/portal");
 }
 
 export async function logout() {
-  const supabase = await createClient();
-  await supabase.auth.signOut();
+  const store = await cookies();
+  const refreshToken = store.get(REFRESH_TOKEN_COOKIE)?.value;
+
+  if (refreshToken) {
+    await publicApiFetch("/api/auth/logout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken }),
+    }).catch(() => {
+      // Best-effort — cookies are cleared regardless below.
+    });
+  }
+
+  await clearAuthCookies();
   redirect("/login");
 }
